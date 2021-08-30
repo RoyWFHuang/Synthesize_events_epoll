@@ -20,7 +20,88 @@ MODULE_DESCRIPTION("Synthesize events for select/poll/epoll");
 static int major = -1;
 static struct cdev vpoll_cdev;
 static struct class *vpoll_class = NULL;
+# if 1
+#define MAX_SZ 16
+struct vpoll_data {
+    wait_queue_head_t wqh;
+    // __poll_t events;
+    __poll_t events[MAX_SZ];
+    int head, tail;
 
+};
+
+static int vpoll_open(struct inode *inode, struct file *file)
+{
+    struct vpoll_data *vpoll_data =
+        kmalloc(sizeof(struct vpoll_data), GFP_KERNEL);
+    if (!vpoll_data)
+        return -ENOMEM;
+    memset(vpoll_data->events, 0, sizeof(__poll_t));
+    vpoll_data->head = 0;
+    vpoll_data->tail = 0;
+    init_waitqueue_head(&vpoll_data->wqh);
+    file->private_data = vpoll_data;
+    return 0;
+}
+
+static int vpoll_release(struct inode *inode, struct file *file)
+{
+    struct vpoll_data *vpoll_data = file->private_data;
+    kfree(vpoll_data);
+    return 0;
+}
+
+static long vpoll_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+    struct vpoll_data *vpoll_data = file->private_data;
+    __poll_t events = arg & EPOLLALLMASK;
+    long res = 10;
+    int idx = 0;
+    spin_lock_irq(&vpoll_data->wqh.lock);
+    if (0 != vpoll_data->events[vpoll_data->tail]){
+        spin_unlock_irq(&vpoll_data->wqh.lock);
+        return -EINVAL;
+    }
+    idx = vpoll_data->tail;
+    vpoll_data->tail ++;
+    spin_unlock_irq(&vpoll_data->wqh.lock);
+
+    switch (cmd) {
+    case VPOLL_IO_ADDEVENTS:
+        vpoll_data->events[idx] |= events;
+        break;
+    case VPOLL_IO_DELEVENTS:
+        vpoll_data->events[idx] &= ~events;
+        break;
+    default:
+        res = -EINVAL;
+    }
+    if (res >= 0) {
+        // res = vpoll_data->events[vpoll_data->tail];
+        if (waitqueue_active(&vpoll_data->wqh)){
+            // WWW(&vpoll_data->wqh, vpoll_data->events);
+            wake_up_poll(&vpoll_data->wqh, events);
+            // wake_up_locked_poll(&vpoll_data->wqh, vpoll_data->eventss);
+        }
+    }
+    // spin_unlock_irq(&vpoll_data->wqh.lock);
+    return res;
+}
+
+static __poll_t vpoll_poll(struct file *file, struct poll_table_struct *wait)
+{
+    struct vpoll_data *vpoll_data = file->private_data;
+
+    poll_wait(file, &vpoll_data->wqh, wait);
+    __poll_t events = READ_ONCE(vpoll_data->events[vpoll_data->head]);
+    if (0 != events)
+    {
+        vpoll_data->events[vpoll_data->head] &= ~events;
+        vpoll_data->head +=1;
+    }
+    return events;
+}
+#else
 struct vpoll_data {
     wait_queue_head_t wqh;
     __poll_t events;
@@ -77,16 +158,18 @@ static __poll_t vpoll_poll(struct file *file, struct poll_table_struct *wait)
     struct vpoll_data *vpoll_data = file->private_data;
 
     poll_wait(file, &vpoll_data->wqh, wait);
-
-    return READ_ONCE(vpoll_data->events);
+    __poll_t events = READ_ONCE(vpoll_data->events);
+    vpoll_data->events &= ~events;
+    return events;
 }
 
+#endif
 static const struct file_operations fops = {
     .owner = THIS_MODULE,
     .open = vpoll_open,
     .release = vpoll_release,
     .unlocked_ioctl = vpoll_ioctl,
-    .poll = vpoll_poll,
+    .poll = vpoll_poll, // for  epoll_ctl
 };
 
 static char *vpoll_devnode(struct device *dev, umode_t *mode)

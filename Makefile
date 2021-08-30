@@ -12,7 +12,10 @@ all:
 check: all
 	sudo rmmod vpoll || echo
 	sudo insmod vpoll.ko
-	./user
+#	sudo ./trace.sh
+	sudo trace-cmd record -p function_graph -g __x64_sys_epoll_wait -O funcgraph-proc ./user
+	# sudo trace-cmd record -p function -P 622 -F ./user
+
 	sudo rmmod vpoll
 
 clean:

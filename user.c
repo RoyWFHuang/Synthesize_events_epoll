@@ -33,19 +33,28 @@ int main(int argc, char *argv[])
         handle_error("epoll_ctl");
 
     switch (fork()) {
-    case 0:
+    case 0: // child process
+    #if 0
         sleep(1);
-        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN);
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN); // 0x01
         sleep(1);
-        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN);
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN); // 0x01
         sleep(1);
-        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN | EPOLLPRI);
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN | EPOLLPRI); // 0x03
         sleep(1);
-        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLPRI);
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLPRI); // 0x02
         sleep(1);
-        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLOUT);
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLOUT); // 0x04
         sleep(1);
-        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLHUP);
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLHUP); //0x10
+    #else
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN); // 0x01
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN); // 0x01
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLIN | EPOLLPRI); // 0x03
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLPRI); // 0x02
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLOUT); // 0x04
+        ioctl(efd, VPOLL_IO_ADDEVENTS, EPOLLHUP); //0x10
+    #endif
         exit(EXIT_SUCCESS);
     default:
         while (1) {
@@ -53,10 +62,10 @@ int main(int argc, char *argv[])
             if (nfds < 0)
                 handle_error("epoll_wait");
             else if (nfds == 0)
-                printf("timeout...\n");
+                printf("timeout...\n");// 0x03
             else {
                 printf("(%d)GOT event %x\n",nfds , ev.events);
-                ioctl(efd, VPOLL_IO_DELEVENTS, ev.events);
+                // ioctl(efd, VPOLL_IO_DELEVENTS, ev.events);
                 if (ev.events & EPOLLHUP)
                     break;
             }
